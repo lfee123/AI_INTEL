@@ -81,16 +81,17 @@ async def research_company(req: ResearchRequest, db = Depends(get_db)):
         
         final_state = {}
         try:
-            async for node, delta in graph.astream(initial_state, stream_mode="updates"):
-                if "stream_updates" in delta and delta["stream_updates"]:
-                    for msg in delta["stream_updates"]:
-                        # Convert the msg to proper SSE format if it doesn't have type
-                        msg_dict = json.loads(msg)
-                        msg_dict["type"] = "agent_update"
-                        yield f"data: {json.dumps(msg_dict)}\n\n"
-                
-                # accumulate state for DB
-                final_state.update(delta)
+            async for event in graph.astream(initial_state, stream_mode="updates"):
+                for node, delta in event.items():
+                    if "stream_updates" in delta and delta["stream_updates"]:
+                        for msg in delta["stream_updates"]:
+                            # Convert the msg to proper SSE format if it doesn't have type
+                            msg_dict = json.loads(msg)
+                            msg_dict["type"] = "agent_update"
+                            yield f"data: {json.dumps(msg_dict)}\n\n"
+                    
+                    # accumulate state for DB
+                    final_state.update(delta)
             
             # Save to DB
             if "ticker" in final_state:
