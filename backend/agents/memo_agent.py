@@ -6,29 +6,35 @@ def memo_node(state: ResearchState) -> dict:
     model = get_gemini_model()
     
     prompt = f"""
-    Write a final Investment Memo for {state['company']} ({state['ticker']}).
-    Verdict: {state.get('verdict')}
-    Score: {state.get('investment_score')}/100
+    Write a highly professional, institutional-grade Investment Memo for {state['company']} ({state['ticker']}).
+    Your writing style should mirror that of a senior Research Lead at a major investment bank (e.g., J.P. Morgan, Goldman Sachs).
     
-    Bull Thesis: {state.get('bull_thesis')}
-    Bear Thesis: {state.get('bear_thesis')}
-    Comps Analysis: {state.get('comps_analysis')}
-    Filing Insights: {state.get('filing_insights')}
-    Sentiment: {state.get('sentiment_score')}
-    Red Team Critique: {state.get('red_team_critique')}
+    Inputs:
+    - Verdict: {state.get('verdict')}
+    - Score: {state.get('investment_score')}/100
+    - Bull Thesis: {state.get('bull_thesis')}
+    - Bear Thesis: {state.get('bear_thesis')}
+    - Comps Analysis: {state.get('comps_analysis')}
+    - Filing Insights: {state.get('filing_insights')}
+    - Sentiment Score: {state.get('sentiment_score')}
+    - Red Team Critique: {state.get('red_team_critique')}
     
-    Format the output as clean HTML without markdown blocks (` ```html `). Use semantic HTML tags (<h1>, <h2>, <p>, <ul>, <table>).
-    Include these sections:
-    1. Executive Summary
-    2. Company Overview
-    3. Investment Thesis (Bull Case)
-    4. Key Risks (Bear Case)
-    5. Financial Snapshot (table)
-    6. Competitive Positioning
-    7. News & Sentiment Analysis
-    8. SEC Filing Highlights
-    9. Investment Score Breakdown (table)
-    10. Verdict & Recommendation
+    Format Guidelines:
+    - Output ONLY clean, semantic HTML. Do not wrap in markdown code blocks like ` ```html `.
+    - Use ONLY the following safe tags: <h1>, <h2>, <p>, <ul>, <li>, <strong>, <em>.
+    - Avoid using <table> tags (instead, represent financial metrics and score breakdowns as clean, structured lists using <ul> and <li> with <strong> tags, e.g. "<strong>P/E Ratio:</strong> 24.5"). This ensures the memo renders beautifully on screen and prints perfectly to PDF.
+    
+    Required Sections (use <h1> for main sections, <h2> for sub-sections, and <p>/<ul>/<li> for content):
+    1. Executive Summary & Investment Verdict (Highlight the final score and verdict clearly)
+    2. Company Overview & Business Model
+    3. Detailed Bull Case (Growth catalysts, competitive moat)
+    4. Key Downside Risks & Bear Case
+    5. Financial Snapshot (Represent the key metrics from the context as bulleted key-value pairs)
+    6. Valuation & Peer Comparison
+    7. Sentiment & Media Analysis (Including News highlights)
+    8. SEC Filing Audit (Management tone, hidden risks)
+    9. Red Team Critique & Mitigation Plan
+    10. Final Investment Recommendation (Final sign-off)
     """
     
     try:

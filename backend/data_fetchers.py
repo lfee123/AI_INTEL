@@ -8,17 +8,17 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-async def fetch_with_retry(client: httpx.AsyncClient, url: str, params: dict = None, retries: int = 3):
+async def fetch_with_retry(client: httpx.AsyncClient, url: str, params: dict = None, retries: int = 1):
     for attempt in range(retries):
         try:
-            response = await client.get(url, params=params, timeout=10.0)
+            response = await client.get(url, params=params, timeout=5.0)
             response.raise_for_status()
             return response.json()
         except Exception as e:
             logger.warning(f"Attempt {attempt + 1} failed for {url}: {e}")
             if attempt == retries - 1:
                 return None
-            await asyncio.sleep(2 ** attempt)
+            await asyncio.sleep(1)
 
 async def get_yahoo_finance_data(ticker: str) -> dict:
     loop = asyncio.get_event_loop()
@@ -84,7 +84,7 @@ async def get_sec_edgar_data(ticker: str) -> str:
         try:
             # Note: EDGAR requires a user-agent
             headers = {"User-Agent": "AlphaIntel/1.0 (test@example.com)"}
-            response = await client.get(url, headers=headers, timeout=10.0)
+            response = await client.get(url, headers=headers, timeout=5.0)
             if response.status_code == 200:
                 data = response.json()
                 hits = data.get("hits", {}).get("hits", [])

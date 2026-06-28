@@ -43,32 +43,40 @@ export function useResearchStream() {
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
 
+        let buffer = '';
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split('\n');
+          buffer += chunk;
           
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                const dataStr = line.substring(6);
-                if (!dataStr.trim()) continue;
-                
-                const parsed: AgentUpdate = JSON.parse(dataStr);
-                
-                if (parsed.type === 'complete') {
-                  setFinalState(parsed.state);
-                  setIsStreaming(false);
-                } else if (parsed.type === 'error') {
-                  setError(parsed.status || 'Unknown error');
-                  setIsStreaming(false);
-                } else {
-                  setUpdates((prev) => [...prev, parsed]);
+          let eventEndIndex;
+          while ((eventEndIndex = buffer.indexOf('\n\n')) >= 0) {
+            const eventStr = buffer.slice(0, eventEndIndex);
+            buffer = buffer.slice(eventEndIndex + 2);
+            
+            const lines = eventStr.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const dataStr = line.substring(6);
+                  if (!dataStr.trim()) continue;
+                  
+                  const parsed: AgentUpdate = JSON.parse(dataStr);
+                  
+                  if (parsed.type === 'complete') {
+                    setFinalState(parsed.state);
+                    setIsStreaming(false);
+                  } else if (parsed.type === 'error') {
+                    setError(parsed.status || 'Unknown error');
+                    setIsStreaming(false);
+                  } else {
+                    setUpdates((prev) => [...prev, parsed]);
+                  }
+                } catch (e) {
+                  console.error('Error parsing SSE json', e);
                 }
-              } catch (e) {
-                console.error('Error parsing SSE json', e);
               }
             }
           }

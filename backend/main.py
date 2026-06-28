@@ -11,6 +11,9 @@ from memory import init_db, get_db, ThesisHistory
 from pdf_generator import generate_pdf_from_html
 from state import ResearchState
 
+from dotenv import load_dotenv
+load_dotenv()
+
 app = FastAPI(title="AlphaIntel Backend")
 
 app.add_middleware(
@@ -27,6 +30,10 @@ def on_startup():
 
 class ResearchRequest(BaseModel):
     company: str
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
 
 @app.post("/api/research")
 async def research_company(req: ResearchRequest, db = Depends(get_db)):
@@ -82,16 +89,27 @@ async def research_company(req: ResearchRequest, db = Depends(get_db)):
         final_state = {}
         try:
             async for event in graph.astream(initial_state, stream_mode="updates"):
+                if event is None or not isinstance(event, dict):
+                    continue
                 for node, delta in event.items():
-                    if "stream_updates" in delta and delta["stream_updates"]:
+                    if delta and isinstance(delta, dict) and "stream_updates" in delta and delta["stream_updates"]:
                         for msg in delta["stream_updates"]:
-                            # Convert the msg to proper SSE format if it doesn't have type
                             msg_dict = json.loads(msg)
-                            msg_dict["type"] = "agent_update"
+                            
+                            # If the message has anything other than agent/status, it's a completion payload with data
+                            data_payload = {k: v for k, v in msg_dict.items() if k not in ("agent", "status", "type")}
+                            
+                            if data_payload:
+                                msg_dict["type"] = "agent_complete"
+                                msg_dict["data"] = data_payload
+                            elif "type" not in msg_dict:
+                                msg_dict["type"] = "agent_update"
+                                
                             yield f"data: {json.dumps(msg_dict)}\n\n"
-                    
+                            
                     # accumulate state for DB
-                    final_state.update(delta)
+                    if delta and isinstance(delta, dict):
+                        final_state.update(delta)
             
             # Save to DB
             if "ticker" in final_state:
@@ -117,7 +135,13 @@ async def research_company(req: ResearchRequest, db = Depends(get_db)):
 
 @app.get("/api/memo/{company_slug}")
 async def get_memo(company_slug: str, db = Depends(get_db)):
-    record = db.query(ThesisHistory).filter(ThesisHistory.ticker == company_slug.upper()).order_by(ThesisHistory.created_at.desc()).first()
+    from sqlalchemy import or_, func
+    record = db.query(ThesisHistory).filter(
+        or_(
+            ThesisHistory.ticker == company_slug.upper(),
+            func.lower(ThesisHistory.company_name) == company_slug.lower()
+        )
+    ).order_by(ThesisHistory.created_at.desc()).first()
     if not record:
         return Response(content="Not found", status_code=404)
         
@@ -144,6 +168,13 @@ class BatchRequest(BaseModel):
 @app.post("/api/research/batch")
 async def run_batch(req: BatchRequest):
     return {"message": "Batch mode initiated."}
+
+@app.get("/api/history/recent")
+async def get_recent_analyses(limit: int = 3, db = Depends(get_db)):
+    records = db.query(ThesisHistory).order_by(ThesisHistory.created_at.desc()).limit(limit).all()
+    # Filter out records where score is 0 or verdict is empty to avoid showing failed runs
+    valid_records = [r for r in records if r.investment_score > 0 and r.verdict]
+    return [{"company": r.company_name, "ticker": r.ticker, "score": r.investment_score, "verdict": r.verdict} for r in valid_records]
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,15 +1,12 @@
 import json
 from state import ResearchState
-from agents.utils import get_gemini_json_model
-import google.generativeai as genai
-import os
+import logging
+from agents.utils import GroqAdapter
+
+logger = logging.getLogger(__name__)
 
 def scorer_node(state: ResearchState) -> dict:
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if api_key:
-        genai.configure(api_key=api_key)
-    # Use temperature 0 for deterministic scoring
-    model = genai.GenerativeModel('gemini-2.5-pro', generation_config={"temperature": 0.0, "response_mime_type": "application/json"})
+    model = GroqAdapter(is_json=True, max_tokens=512)
     
     prompt = f"""
     You are the final Investment Scorer.
@@ -19,8 +16,8 @@ def scorer_node(state: ResearchState) -> dict:
     Market Data: {json.dumps(state['market_data'])}
     Sentiment Score: {state.get('sentiment_score')}
     Red Team Critique: {state.get('red_team_critique')}
-    Bull Thesis: {state.get('bull_thesis')[:500]}
-    Bear Thesis: {state.get('bear_thesis')[:500]}
+    Bull Thesis: {state.get('bull_thesis')[:2000]}
+    Bear Thesis: {state.get('bear_thesis')[:2000]}
     
     Compute 5 sub-scores:
     - Fundamentals (max 25 pts)
@@ -49,15 +46,37 @@ def scorer_node(state: ResearchState) -> dict:
     try:
         response = model.generate_content(prompt)
         result = json.loads(response.text)
-        score = result.get("total_score", 50)
-        sub_scores = result.get("sub_scores", {})
+        raw_sub = result.get("sub_scores", {})
+        
+        # Safely extract and cap sub-scores to prevent 8B model hallucinations
+        sub_scores = {
+            "fundamentals": min(25, max(0, int(raw_sub.get("fundamentals", 0)))),
+            "sentiment": min(20, max(0, int(raw_sub.get("sentiment", 0)))),
+            "momentum": min(20, max(0, int(raw_sub.get("momentum", 0)))),
+            "valuation": min(20, max(0, int(raw_sub.get("valuation", 0)))),
+            "risk": min(15, max(0, int(raw_sub.get("risk", 0))))
+        }
+        
+        score = sum(sub_scores.values())
         verdict = result.get("verdict", "HOLD")
     except Exception as e:
-        score = 50
+        logger.error(f"Scorer failed to parse JSON: {e}. Raw response: {response.text if 'response' in locals() else 'no response'}")
         sub_scores = {"fundamentals": 10, "sentiment": 10, "momentum": 10, "valuation": 10, "risk": 10}
+        score = 50
         verdict = "HOLD"
         
-    stream_msg = json.dumps({"agent": "scorer", "score": score, "verdict": verdict, "sub_scores": sub_scores})
+    stream_msg = json.dumps({
+        "type": "agent_complete",
+        "agent": "scorer", 
+        "score": score, 
+        "verdict": verdict, 
+        "sub_scores": sub_scores,
+        "data": {
+            "score": score,
+            "verdict": verdict,
+            "sub_scores": sub_scores
+        }
+    })
     
     return {
         "investment_score": score,

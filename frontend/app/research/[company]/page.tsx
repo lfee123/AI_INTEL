@@ -1,102 +1,132 @@
-"use client";
+'use client';
 
-import React, { useEffect, useState } from 'react';
-import { usePathname } from 'next/navigation';
-import { useResearchStream } from '@/lib/useResearchStream';
-import ResearchStream from '@/components/ResearchStream';
-import InvestmentScoreDial from '@/components/InvestmentScoreDial';
-import BullBearDebate from '@/components/BullBearDebate';
-import InvestmentMemo from '@/components/InvestmentMemo';
-import { ChevronLeft } from 'lucide-react';
-import Link from 'next/link';
+import { useEffect, useState, use } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Navbar from '../../../components/layout/Navbar';
+import { useResearchStream } from '../../../hooks/useResearchStream';
+import AgentPipeline from '../../../components/research/AgentPipeline';
+import ResearchSidebar from '../../../components/research/ResearchSidebar';
+import ContentTabs, { TabId } from '../../../components/research/ContentTabs';
+import BullBearDebate from '../../../components/research/BullBearDebate';
+import NewsTab from '../../../components/research/NewsTab';
+import CompetitorTable from '../../../components/research/CompetitorTable';
+import FilingTab from '../../../components/research/FilingTab';
+import RedTeamTab from '../../../components/research/RedTeamTab';
+import MemoTab from '../../../components/research/MemoTab';
 
-export default function ResearchPage() {
-  const pathname = usePathname();
-  const companySlug = pathname.split('/').pop() || '';
-  const company = decodeURIComponent(companySlug);
-  
-  const { updates, startResearch, isStreaming, error, finalState } = useResearchStream();
-  const [started, setStarted] = useState(false);
+export default function ResearchPage({ params }: { params: Promise<{ company: string }> }) {
+  const { company } = use(params);
+  const [activeTab, setActiveTab] = useState<TabId>('bullbear');
+  const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
+
+  const {
+    startStream,
+    isComplete,
+    error,
+    agents,
+    resolvedCompany,
+    scoreData,
+    newsData,
+    compsData,
+    filingData,
+    criticData
+  } = useResearchStream();
 
   useEffect(() => {
-    if (company && !started) {
-      startResearch(company);
-      setStarted(true);
+    if (company) {
+      startStream(decodeURIComponent(company));
     }
-  }, [company, started, startResearch]);
+  }, [company, startStream]);
 
-  // Extract latest state from updates or finalState
-  let currentState: any = finalState || {};
-  if (!finalState && updates.length > 0) {
-    // try to accumulate state naively from updates if we wanted, 
-    // but the backend sends the state in final event.
-    // For intermediate UI, we use the agent updates.
-  }
-  
-  const bullUpdate = [...updates].reverse().find(u => u.agent === 'bull' && u.content);
-  const bearUpdate = [...updates].reverse().find(u => u.agent === 'bear' && u.content);
-  const scoreUpdate = finalState ? { score: finalState.investment_score, verdict: finalState.verdict, sub_scores: finalState.sub_scores } : [...updates].reverse().find(u => u.agent === 'scorer');
+  useEffect(() => {
+    if (isComplete && scoreData) {
+      setToast({ message: `Analysis complete — ${resolvedCompany?.name || decodeURIComponent(company)} scored ${scoreData.score}/100`, visible: true });
+      const timer = setTimeout(() => setToast(prev => ({ ...prev, visible: false })), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [isComplete, scoreData, resolvedCompany, company]);
+
+  const renderActiveTabContent = () => {
+    switch (activeTab) {
+      case 'bullbear':
+        return (
+          <BullBearDebate 
+            bullContent={agents.bull?.content} 
+            bearContent={agents.bear?.content} 
+          />
+        );
+      case 'news':
+        return <NewsTab data={newsData || undefined} />;
+      case 'comps':
+        return <CompetitorTable data={compsData || undefined} targetCompany={resolvedCompany?.name || decodeURIComponent(company)} />;
+      case 'filing':
+        return <FilingTab data={filingData || undefined} />;
+      case 'critic':
+        return <RedTeamTab data={criticData || undefined} reflectionStatus={agents.reflection?.status === 'active' ? 'Reflection loop triggered — re-running analysis' : undefined} />;
+      case 'memo':
+        return <MemoTab content={agents.memo?.content} companySlug={company} />;
+      default:
+        return null;
+    }
+  };
 
   return (
-    <main className="min-h-screen bg-[#0B0F19] text-gray-100 p-8 font-sans selection:bg-blue-500/30">
-      <div className="max-w-7xl mx-auto">
-        <Link href="/" className="inline-flex items-center text-blue-400 hover:text-blue-300 mb-8 font-semibold transition-colors">
-          <ChevronLeft size={20} /> Back to Search
-        </Link>
-        
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-4xl font-black bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-              {company}
-            </h1>
-            <p className="text-gray-400 mt-2 text-lg">Live AI Research & Due Diligence</p>
-          </div>
-          {isStreaming && (
-            <div className="flex items-center gap-2 bg-blue-900/30 text-blue-400 px-4 py-2 rounded-full border border-blue-800 animate-pulse">
-              <span className="relative flex h-3 w-3">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-              </span>
-              Agents Active
-            </div>
-          )}
-        </div>
-        
-        {error && (
-          <div className="bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-lg mb-8">
-            <strong>Error:</strong> {error}
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-          <div className="lg:col-span-2">
-            <ResearchStream updates={updates} isStreaming={isStreaming} company={company} />
-          </div>
-          <div>
-            {(scoreUpdate || finalState) ? (
-              <InvestmentScoreDial 
-                score={scoreUpdate?.score || finalState?.investment_score || 0} 
-                verdict={scoreUpdate?.verdict || finalState?.verdict || 'HOLD'} 
-                subScores={scoreUpdate?.sub_scores || finalState?.sub_scores || {}} 
-              />
-            ) : (
-              <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 shadow-2xl h-full flex items-center justify-center text-gray-500 flex-col gap-4">
-                <div className="w-16 h-16 border-4 border-gray-800 border-t-blue-500 rounded-full animate-spin"></div>
-                <p>Computing Investment Score...</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <BullBearDebate 
-          bullThesis={finalState?.bull_thesis || bullUpdate?.content} 
-          bearThesis={finalState?.bear_thesis || bearUpdate?.content} 
+    <div className="flex flex-col h-screen overflow-hidden">
+      <Navbar />
+      
+      <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
+        <ResearchSidebar 
+          companySlug={company}
+          resolvedCompany={resolvedCompany}
+          scoreData={scoreData}
+          isComplete={isComplete}
+          agents={agents}
         />
         
-        {finalState?.memo && (
-          <InvestmentMemo memoHtml={finalState.memo} ticker={finalState.ticker} />
-        )}
+        <main className="flex-1 flex flex-col p-6 overflow-y-auto bg-base">
+          <div className="max-w-6xl w-full mx-auto">
+            
+            {error && (
+              <div className="mb-6 bg-bear/10 border border-bear text-bear p-4 rounded-lg flex items-center justify-between">
+                <div>
+                  <h4 className="font-bold mb-1">Error</h4>
+                  <p className="text-sm">{error}</p>
+                </div>
+                <button 
+                  onClick={() => startStream(decodeURIComponent(company))}
+                  className="px-4 py-2 bg-bear text-white text-sm rounded-md font-medium hover:bg-bear/90"
+                >
+                  Retry
+                </button>
+              </div>
+            )}
+            
+            <AgentPipeline agents={agents} />
+            
+            <div className="mt-8">
+              <ContentTabs activeTab={activeTab} onChange={setActiveTab}>
+                {renderActiveTabContent()}
+              </ContentTabs>
+            </div>
+            
+          </div>
+        </main>
       </div>
-    </main>
+
+      {/* Toast Notification */}
+      <AnimatePresence>
+        {toast.visible && (
+          <motion.div
+            initial={{ opacity: 0, y: 50, x: 20 }}
+            animate={{ opacity: 1, y: 0, x: 0 }}
+            exit={{ opacity: 0, y: 50, scale: 0.9 }}
+            className="fixed bottom-6 right-6 bg-surface border border-border shadow-2xl p-4 rounded-lg flex items-center gap-3 z-50"
+          >
+            <div className="w-2 h-2 rounded-full bg-bull animate-pulse" />
+            <span className="text-sm font-medium text-text-primary">{toast.message}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
