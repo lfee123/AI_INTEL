@@ -32,16 +32,3 @@ This document serves as a post-mortem and knowledge base for the technical chall
 ## 7. Static Model vs Real-Time Knowledge
 **Problem**: The Groq/LLaMA models currently powering the platform have static training data cutoffs (e.g., late 2023). They are not intrinsically "up-to-date" on current market conditions unless explicitly provided with live data via our data fetchers (SEC filings, news APIs). 
 **Resolution (Future Improvement)**: Migrating back to, or offering an option to use, an internet-connected and constantly updated model like Google's `gemini-1.5-pro` would vastly improve the model's baseline awareness of current macroeconomic trends, live company events, and real-time investment sentiment without needing perfectly comprehensive external data pipelines.
-## 7. Frontend Layout & UI Overlaps
-**Problem**: Several UI elements were misaligned:
-- The "Analyse" button overlapped the input text in the search bar.
-- The Verdict Badge stretched full-width, overlapping the score dial.
-- Next.js injected a stray "N" dev-mode indicator in the bottom corner of the screen.
-**Resolution**: 
-- Applied absolute positioning (`top-1/2 -translate-y-1/2`) to lock the search button inside the input container.
-- Set the Verdict Badge to `inline-flex w-fit` and added structural margins (`mt-6`).
-- Disabled `devIndicators` in `next.config.ts`.
-
-## 8. GitHub Secret Scanning Blocks
-**Problem**: An attempt to push the codebase to GitHub was outright rejected by GitHub's Push Protection because real API keys (Gemini, Alpha Vantage) were left exposed in `.env.example`.
-**Resolution**: Scrubbed the `.env.example` file, replacing all real keys with safe placeholder text (`your_api_key_here`), amended the commit, and successfully pushed the codebase.
